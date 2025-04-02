@@ -1,0 +1,297 @@
+import os
+import math
+from dataclasses import dataclass
+import re
+import comfy.model_management
+import folder_paths
+from enum import Enum
+from typing import Any, Self, List, Optional, Dict, Tuple, Generic, TypeVar
+from collections.abc import Callable
+from pydantic import BaseModel, NegativeFloat
+import yaml
+import pprint
+from nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+from colorama import init, Fore, Back
+
+ENCODED_PROMPT_TYPE = "ENCODED_PROMPT"
+
+class StyleCategory(Enum):
+    SUBJECT = "subject"
+    ACTION = "action"
+    HAIR = "hair"
+    CLOTHING = "clothing"
+    EXPRESSION = "expression"
+    ATTRIBUTES = "attributes"
+    ENVIRONMENT = "environment"
+    LIGHTING = "lighting"
+    CAMERA = "camera"
+    ART_STYLE = "art_style"
+    MEDIUM = "medium"
+    BOOSTERS = "boosters"
+    NONE = "none"
+
+    @classmethod
+    def from_str(cls, cat_name: str) -> Self:
+        cat_name = cat_name.lower()
+        if cat_name not in cls:
+            raise Exception(f"{cat_name} is not a valid category")
+        return cls(cat_name)
+
+T = TypeVar("T", bound="Style")
+
+class Style(BaseModel, Generic[T]):
+    prompt: Optional[str]
+    negative_prompt: Optional[str]
+    category: Optional[StyleCategory]
+
+    def get_style_category(self) -> StyleCategory:
+        if isinstance(self.category, StyleCategory):
+            return self.category
+        return StyleCategory.NONE
+
+    def append(self, other: "Style") -> None:
+        if other.category != self.category:
+            raise Exception(f"Cannot merge {self.category} and {other.category}")
+        self.prompt = self._merge_prompts(self.prompt, other.prompt)
+        self.negative_prompt = self._merge_prompts(self.negative_prompt, other.negative_prompt)
+
+    def _merge_prompts(self, p1: Optional[str], p2: Optional[str]) -> str:
+        return ", ".join([p for p in [p1, p2] if p is not None and p != ""])
+
+    def get_encoded(self) -> str:
+        return yaml.dump(self.model_dump())
+
+class Prompt(Style["Prompt"]):
+    def __init__(self, prompt: str, category: StyleCategory) -> None:
+        super().__init__(
+            prompt=prompt.strip(","),
+            negative_prompt="",
+            category=category
+        )
+
+class NegativePrompt(Style["NegativePrompt"]):
+    def __init__(self, prompt: str) -> None:
+        super().__init__(
+            prompt="",
+            negative_prompt=prompt.strip(","),
+            category=StyleCategory.NONE
+        )
+
+
+class PromptMgr:
+    def __init__(self) -> None:
+        self.prompts: Dict[StyleCategory, Prompt] = {cat: Prompt("", cat) for cat in StyleCategory}
+        self.negative_prompt: NegativePrompt = NegativePrompt("")
+
+        self.styles: Dict[str, Style] = dict()
+
+    def load_styles(self, **kwargs: Dict[str, List[str]]):
+        for cat, styles in kwargs.items():
+            for s in styles: 
+                if s not in self.styles:
+                    print(f"{s} is a non-existent style!")
+                    continue
+                style = self.styles[s]
+                self.prompts[style.get_style_category()].append(style)
+                self.negative_prompt.append(style)
+
+    def load_style_definitions(self):
+        for file in self._get_all_yaml_files(os.path.dirname(os.path.realpath(__file__))):
+            for k, v in self._load_styles_from_yaml(file).items():
+                self.styles[k] = v
+
+    def _load_styles_from_yaml(self, path: str) -> Dict[str, Style]:
+        with open(path) as f:
+            raw = yaml.safe_load(f)
+
+        return {key: Style(**value) for key, value in raw.items()}
+
+    def _get_all_yaml_files(self, dir: str):
+        paths = []
+        for file in os.listdir(dir):
+            if file == "categories.yaml":
+                continue
+            full_path = os.path.join(dir, file)
+            if os.path.isfile(full_path) and (file.endswith(".yaml") or file.endswith(".yml")):
+                paths.append(full_path)
+        return paths
+    
+    def process_categorized_input(self, **kwargs):
+        for k in kwargs:
+            p = Prompt(kwargs[k], StyleCategory.from_str(k))
+            self.prompts[p.get_style_category()].append(p)
+
+    def process_node_input(self, text: str):
+        print(text)
+        y: List[Dict] = yaml.safe_load(text)
+        for y_prompt in (y if y is not None else []):
+            prompt = Prompt(**y_prompt)
+            self.prompts[prompt.get_style_category()].append(prompt)
+
+
+    def process_negative_node_input(self, text: str):
+        self.negative_prompt.append(NegativePrompt(text))
+
+    def get_encoded_prompt(self) -> str:
+        return yaml.dump([p.model_dump() for p in self.prompts.values()])
+
+    def get_clean_prompt(self) -> str:
+        parts = []
+        for cat in StyleCategory:
+            if self.prompts[cat].prompt is not None and self.prompts[cat].prompt != "":
+                parts.append(self.prompts[cat].prompt)
+        return ",".join(parts)
+
+    def get_clean_negative_prompt(self) -> str:
+        return self.negative_prompt.negative_prompt if self.negative_prompt.negative_prompt is not None else ""
+
+
+### NODES ###
+
+
+class StiffyPrompterNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "optional":{
+                "prompt": (ENCODED_PROMPT_TYPE, {"forceInput": True}),
+                **{category.value: ("STRING", {"multiline": True, "default": "", "tooltip": category.value})
+                    for category in StyleCategory},
+            }
+        }
+
+    RETURN_TYPES = (ENCODED_PROMPT_TYPE,)
+    RETURN_NAMES = (
+        "prompt",
+    )
+    FUNCTION = "get_stiffy"
+
+    CATEGORY = "stiffy"
+
+    def get_stiffy(self, prompt: str="", **kwargs):
+        mgr = PromptMgr()
+        mgr.process_node_input(prompt)
+        mgr.process_categorized_input(**kwargs)
+        return mgr.get_encoded_prompt()
+
+class StiffyPromptDecoderNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required":{
+                "encoded_prompt": (ENCODED_PROMPT_TYPE, {"forceInput": True})
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = (
+        "decoded_prompt",
+    )
+    FUNCTION = "get_stiffy"
+
+    CATEGORY = "stiffy"
+
+    def get_stiffy(self, encoded_prompt: str):
+        mgr = PromptMgr()
+        mgr.process_node_input(encoded_prompt)
+        return mgr.get_encoded_prompt()
+
+class StiffyPromptStylesNode:
+    MAX_STYLE_COUNT = 6
+    @classmethod
+    def INPUT_TYPES(cls):
+        mgr = PromptMgr()
+        mgr.load_style_definitions()
+
+        opts = dict()
+
+        for cat in StyleCategory:
+            opts[f"label_{cat.value}"] = ("STRING", {"default": cat.value})
+            opts[cat.value] = ("COMBO", {"options": [name for name, style in mgr.styles.items() if style.category == cat], "multi_select": True, "tooltip": cat.value, "default": cat.value})
+
+        return {"optional": {
+                "prompt": (ENCODED_PROMPT_TYPE, {"forceInput": True}),
+            "negative_prompt": ("STRING", {"forceInput": True}),
+            **opts
+        }}
+
+    RETURN_TYPES = (ENCODED_PROMPT_TYPE, "STRING", "STRING")
+    RETURN_NAMES = (
+        "prompt_encoded",
+        "prompt",
+        "negative_prompt",
+    )
+    FUNCTION = "get_stiffy"
+
+    CATEGORY = "stiffy"
+
+    def get_stiffy(self, prompt: Optional[List[Prompt]]=None, negative_prompt="", **kwargs):
+        pprint.pprint(prompt)
+        pprint.pprint(negative_prompt)
+        pprint.pprint(kwargs)
+        raise Exception
+        mgr = PromptMgr()
+        mgr.process_node_input(prompt)
+        mgr.process_negative_node_input(negative_prompt)
+        mgr.load_style_definitions()
+        mgr.load_styles(**{k: v for k, v in kwargs.items() if not k.startswith("label_")})
+        return(mgr.get_clean_prompt(), mgr.get_clean_negative_prompt(), mgr.get_encoded_prompt(), mgr.get_encoded_negative_prompt())
+
+class StiffyPromptEncoderNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required":{
+                "prompt": ("STRING", {"forceInput": True}),
+                "category": ([cat.value for cat in StyleCategory], {"default": StyleCategory.NONE.value})
+            }
+        }
+
+    RETURN_TYPES = (ENCODED_PROMPT_TYPE,)
+    RETURN_NAMES = (
+        "encoded_prompt",
+    )
+    FUNCTION = "get_stiffy"
+
+    CATEGORY = "stiffy"
+
+    def get_stiffy(self, prompt: str, category: str):
+        return Prompt(prompt, StyleCategory.from_str(category)).get_encoded()        
+
+class StiffyEncodedPromptToConsole:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "prompt": (ENCODED_PROMPT_TYPE, {"forceInput": True}),
+                "label": ("STRING", {"default": f'Encoded String', "multiline": False}),
+            }
+        }
+
+    RETURN_TYPES = (ENCODED_PROMPT_TYPE,)
+    FUNCTION = "get_stiffy"
+
+    CATEGORY = "stiffy"
+
+    def get_stiffy(self, text: str, label: str):
+        print(f"{Fore.GREEN}{label.strip()}{Fore.RESET}\n{text}")
+        return (text, )
+
+NODE_CLASS_MAPPINGS[StiffyPrompterNode.__name__] = StiffyPrompterNode
+NODE_DISPLAY_NAME_MAPPINGS[StiffyPrompterNode.__name__] = "Stiffy Prompter"
+
+NODE_CLASS_MAPPINGS[StiffyPromptDecoderNode.__name__] = StiffyPromptDecoderNode
+NODE_DISPLAY_NAME_MAPPINGS[StiffyPromptDecoderNode.__name__] = "Stiffy Prompt Decoder"
+
+NODE_CLASS_MAPPINGS[StiffyPromptStylesNode.__name__] = StiffyPromptStylesNode
+NODE_DISPLAY_NAME_MAPPINGS[StiffyPromptStylesNode.__name__] = "Stiffy Prompt Styles"
+
+NODE_CLASS_MAPPINGS[StiffyPromptEncoderNode.__name__] = StiffyPromptEncoderNode
+NODE_DISPLAY_NAME_MAPPINGS[StiffyPromptEncoderNode.__name__] = "Stiffy Prompt Encoder"
+
+NODE_CLASS_MAPPINGS[StiffyEncodedPromptToConsole.__name__] = StiffyEncodedPromptToConsole
+NODE_DISPLAY_NAME_MAPPINGS[StiffyEncodedPromptToConsole.__name__] = "Stiffy Encoded Prompt to Console"
+
+init()
+if __name__ == "__main__":
+    pass
