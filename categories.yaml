@@ -1,0 +1,17 @@
+- "boosters"
+- "subject"
+- "attributes":
+    - "action"
+    - "body"
+    - "face"
+    - "expression"
+    - "clothing"
+- "scene":
+    - "environment"
+    - "lighting"
+- "style":
+    - "aesthetic"
+    - "artist"
+    - "medium"
+    - "camera"
+    - "mood"
