@@ -10,6 +10,7 @@ from types import FunctionType, NotImplementedType, UnionType
 from weakref import proxy
 from pydantic import BaseModel, NegativeFloat
 from typing import Any, List, Dict, NoReturn, Optional, Self, TextIO, Tuple, TypeVar, Type, Generator, Union
+from nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
 
 from pydantic_core.core_schema import is_instance_schema
 import yaml
@@ -397,8 +398,8 @@ class NodeFactory:
     def register_node(self, node: Type[T]) -> Self:
         name = node.__name__
         display_name = re.sub(r"(?<!^)(?=[A-Z])|Node", " ", name)
-        #NODE_CLASS_MAPPINGS[name] = node
-        #NODE_DISPLAY_NAME_MAPPINGS[name] = display_name
+        NODE_CLASS_MAPPINGS[name] = node
+        NODE_DISPLAY_NAME_MAPPINGS[name] = display_name
         return self
 
     def register_prompter_node(self) -> Self:
@@ -407,26 +408,24 @@ class NodeFactory:
     def register_decoder_node(self) -> Self:
         return self.register_node(StiffyDecoderNode)
 
-    def register_styler_nodes(self) -> Tuple[Self, Any]:
+    def register_styler_nodes(self) -> Self:
         runner = NodeRunner()
         for category in [None, *runner.get_categories()]:
             cat_name = "All" if category is None else category.capitalize()
             node_name = f"StiffyStyler{cat_name}Node"
             node = type(node_name, (StiffyStylerBase, ), {"STYLE_CATEGORY": category})
-            print(category)
-            pprint(node.INPUT_TYPES())
             self.register_node(node)
-        return self, n
+        return self
+    
+    def register_debugger_node(self) -> Self:
+        return self.register_node(StiffyDebuggerNode)
+
+NodeFactory() \
+    .register_prompter_node() \
+    .register_styler_nodes() \
+    .register_decoder_node() \
+    .register_debugger_node()
 
 if __name__ == "__main__":
-    n = StiffyPrompterNode()
-    n_out = n.get_stiffy(category="subject", positive_prompt="yoooo")[0]
-    n2 = StiffyPrompterNode()
-    n2_out = n2.get_stiffy(n_out, "clothing", "fucky")[0]
-
-    _, n3 = NodeFactory().register_styler_nodes()
-
-    #n3 = StiffyDecoderNode()
-    #n3_out = n3.get_stiffy(n2_out)
-
+    pass
 
