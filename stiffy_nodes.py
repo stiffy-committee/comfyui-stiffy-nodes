@@ -220,7 +220,7 @@ class PromptMgr:
                 self.negative_prompt.append(style, True)
 
     def load_style_definitions(self):
-        for file in self._get_style_definitions(os.path.dirname(os.path.realpath(__file__))):
+        for file in self._get_style_definitions(os.path.dirname(os.path.realpath(__file__)) + "/styles/"):
             for k, v in self._load_styles_from_yaml(file).items():
                 self.styles[k] = v
 
