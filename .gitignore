@@ -1,1 +1,3 @@
-styles/
+styles/**/*
+!styles/base.yaml
+!styles/template.yaml

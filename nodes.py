@@ -17,6 +17,7 @@ import yaml
 
 ENCODED_PROMPT_TYPE = "ENCODED_PROMPT"
 UNCATEGORIZED_CATEGORY_NAME = "uncategorized"
+TEMPLATE_STYLE_NAME = "template"
 
 # UTILS
 T = TypeVar("T")
@@ -129,7 +130,7 @@ class StyleList(Model):
     
     @classmethod
     def from_yaml(cls, raw: List | Dict | str) -> Self:
-        return cls(styles={k: Prompt.from_yaml(v) for k, v in assert_type(raw, Dict).items()})
+        return cls(styles={k: Prompt.from_yaml(v) for k, v in assert_type(raw, Dict).items() if k != TEMPLATE_STYLE_NAME})
 
     @classmethod
     def collection_from_yaml(cls, raw: List | Dict | str) -> List[Self]:
@@ -187,7 +188,7 @@ class PromptController(YamlLoader):
         self.search_path = self.search_path.joinpath("styles")
 
         self.category_controller = category_controller
-        self.style_list: StyleList = reduce(lambda acc, s: StyleList(styles= acc.styles | s.styles), self._load(StyleList), StyleList(styles={}))
+        self.style_list: StyleList = reduce(lambda acc, s: StyleList(styles= acc.styles | s.styles), self._load(StyleList, True), StyleList(styles={}))
 
         self.prompts: Dict[Category, Prompt] = {cat: Prompt.empty(cat) for cat in self.category_controller.get_categories()}
 
