@@ -2,8 +2,9 @@ from abc import abstractmethod
 from types import NotImplementedType
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Self, TypeVar, Union, Self
-from utils import assert_type, get_dict_first_item, raise_type_err
-from constants import UNCATEGORIZED_CATEGORY_NAME, TEMPLATE_STYLE_NAME
+from .utils import assert_type, get_dict_first_item, raise_type_err
+from .constants import UNCATEGORIZED_CATEGORY_NAME, TEMPLATE_STYLE_NAME
+from pprint import pprint
 
 class Model(BaseModel):
     @classmethod
@@ -18,41 +19,15 @@ class Model(BaseModel):
 
 TModel = TypeVar("TModel", bound=Model)
 
-class Category(Model):
-    name: str
-
-    @classmethod
-    def from_yaml(cls, raw: List | Dict | str) -> Self:
-        if isinstance(raw, str):
-            return cls(name=raw)
-        if isinstance(raw, Dict):
-            return cls(**raw)
-        raise_type_err(raw, Union[Dict, str])
-         
-    
-    @classmethod
-    def collection_from_yaml(cls, raw: List | Dict | str) -> List[Self]:
-        raise NotImplementedType
-
-    @classmethod
-    def uncategorized(cls) -> Self:
-        return cls(name=UNCATEGORIZED_CATEGORY_NAME)
-
-    def __hash__(self):
-        return hash(self.name)
-    
-    def __eq__(self, other):
-        return isinstance(other, Category) and self.name == other.name
-
 class CategoryList(Model):
-    categories: List[Category]
+    categories: List[str]
 
     @classmethod
     def from_yaml(cls, raw: List | Dict | str) -> Self:
         categories = []
         for item in assert_type(raw, List):
             if isinstance(item, str):
-                categories.append(Category.from_yaml(item))
+                categories.append(item)
             elif isinstance(item, dict):
                 _, v = get_dict_first_item(item)
                 categories.extend([c for c in cls.from_yaml(v).categories])
@@ -67,12 +42,12 @@ class CategoryList(Model):
 class Prompt(Model):
     prompt: Optional[str] = ""
     negative_prompt: Optional[str] = ""
-    category: Category = Category.uncategorized()
+    category: str = UNCATEGORIZED_CATEGORY_NAME
 
     @classmethod
     def from_yaml(cls, raw: List | Dict | str) -> Self:
         raw = assert_type(raw, Dict)
-        raw["category"] = Category.from_yaml(raw.get("category", UNCATEGORIZED_CATEGORY_NAME))
+        raw["category"] = raw.get("category", UNCATEGORIZED_CATEGORY_NAME)
         return cls(**assert_type(raw, Dict))
 
     @classmethod
@@ -82,12 +57,12 @@ class Prompt(Model):
         prompts = []
         for i in raw:
             i = assert_type(i, Dict)
-            i["category"] = Category(**i.get("category", UNCATEGORIZED_CATEGORY_NAME))
+            i["category"] = i.get("category", UNCATEGORIZED_CATEGORY_NAME)
             prompts.append(cls(**assert_type(i, Dict)))
         return prompts
     
     @classmethod
-    def empty(cls, category: Category) -> Self:
+    def empty(cls, category: str) -> Self:
         return cls(
             prompt="",
             negative_prompt="",

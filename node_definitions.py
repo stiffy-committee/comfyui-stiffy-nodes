@@ -1,7 +1,6 @@
 from typing import Tuple, Optional, List
-from constants import ENCODED_PROMPT_TYPE
-from node_logic import NodeRunner
-from models import Category
+from .constants import ENCODED_PROMPT_TYPE, UNCATEGORIZED_CATEGORY_NAME
+from .node_logic import NodeRunner
 
 class StiffyPrompterNode:
     @classmethod
@@ -19,23 +18,51 @@ class StiffyPrompterNode:
     RETURN_NAMES = ("prompt", )
     CATEGORY = "stiffy"
     FUNCTION = "get_stiffy"
+
     def get_stiffy(self, prompt: str="", category: str="", positive_prompt: str="") -> Tuple[str]:
         return NodeRunner() \
             .process_encoded_prompt_input(prompt) \
             .process_positive_prompt_input(positive_prompt, category) \
             .get_encoded_prompt(),
             
+class StiffyPersistentPrompterNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        runner = NodeRunner()
+        return {
+            "optional": {
+                "prompt": (ENCODED_PROMPT_TYPE, {"forceInput": True}),
+                "category": (runner.get_categories(), {"default": ""}),
+                "style_name": ("STRING", {"multiline": False, "default": "", "placeholder": "cust-"}),
+                "positive_prompt": ("STRING", {"multiline": True, "default": ""}),
+                "negative_prompt": ("STRING", {"multiline": True, "default": ""})
+            }
+        }
+
+    RETURN_TYPES = (ENCODED_PROMPT_TYPE,)
+    RETURN_NAMES = ("prompt", )
+    CATEGORY = "stiffy"
+    FUNCTION = "get_stiffy"
+
+    def get_stiffy(self, prompt: str="", category: str="", style_name: str="", positive_prompt: str="", negative_prompt: str="") -> Tuple[str]:
+        return NodeRunner() \
+            .process_encoded_prompt_input(prompt) \
+            .process_positive_prompt_input(positive_prompt, category) \
+            .process_negative_prompt_input(negative_prompt) \
+            .save_style(style_name, category, positive_prompt, negative_prompt) \
+            .get_encoded_prompt(),
 
 class StiffyStylerBase:
-    STYLE_CATEGORY: Category = Category.uncategorized()
+    STYLE_CATEGORY: str = UNCATEGORIZED_CATEGORY_NAME
     @classmethod
     def INPUT_TYPES(cls):
         runner = NodeRunner()
         return {"optional":{
             "prompt": (ENCODED_PROMPT_TYPE, {"forceInput": True}),
-            "style": ("COMBO", {
+            "styles": ("COMBO", {
                 "options": runner.get_styles(cls.STYLE_CATEGORY),
                 "multi_select": True,
+                "tooltip": cls.STYLE_CATEGORY
             })
         }}
     

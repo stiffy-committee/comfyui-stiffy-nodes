@@ -1,0 +1,40 @@
+# BOOSTERS
+stiffy-base:
+  prompt: 'score_9, score_8_up, score_7_up'
+  negative_prompt: 'score_4, score_5, score_6, jpeg artifacts, censor, blurry, lowres, watermark, text, artist tag, words, lowres, ugly, deformed, out of frame, low res, jpeg, bad teeth, ugly teeth,low quality, worst quality, bad quality, source_cartoon, monochrome'
+  category: 'boosters'
+stiffy-base-lite:
+  prompt: 'score_9, score_8_up, score_7_up'
+  negative_prompt: 'score_4, score_5, score_6'
+  category: 'boosters'
+# SUBJECT
+# ATTRIBUTES:
+# ___________
+# ACTION
+# BODY
+stiffy-mechanical-body:
+  prompt: 'mechanical body, robot body, prosthetic limbs, intricate mechanical body'
+  negative_prompt: ''
+  category: 'body'
+# FACE
+# EXPRESSION
+# CLOTHING
+stiffy-knight-armor:
+  prompt: 'knight armor, bulky shoulder pads, surcoat'
+  negative_prompt: ''
+  category: 'clothing'
+# SCENE:
+# ______
+# ENVIRONMENT
+# LIGHTNING
+# STYLE:
+# ______
+# AESTHETIC
+stiffy-realistic:
+  prompt: 'realistic, real'
+  negative_prompt: 'deformed, deformed face, low quality, bad quality, worst quality, drawn, furry, illustration, cartoon, anime, comic, 3d, cgi, extra fingers, source_anime, source_cartoon, source_furry, source_western, source_comic, source_pony, deformed teeth'
+  category: 'aesthetic'
+# ARTIST
+# MEDIUM
+# CAMERA
+# MOOD

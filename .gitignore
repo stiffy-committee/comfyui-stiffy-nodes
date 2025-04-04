@@ -1,4 +1,4 @@
 __pycache__/
 styles/**/*
-!styles/base.yaml
+!styles/base_styles.yaml
 !styles/template.yaml

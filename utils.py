@@ -1,8 +1,9 @@
+from collections.abc import Hashable
 from types import UnionType
 from typing import Any, Dict, NoReturn, Tuple, TypeVar, Type
 
 T = TypeVar("T")
-TK = TypeVar("TK")
+TK = TypeVar("TK", bound=Hashable)
 TV = TypeVar("TV")
 
 def raise_type_err(obj: Any, t: Type[T] | UnionType) -> NoReturn:
