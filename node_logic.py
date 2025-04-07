@@ -4,12 +4,18 @@ from decimal import InvalidOperation
 from functools import reduce
 import os
 from pathlib import Path
-from typing import Generic, List, Dict, Optional, Self, TextIO, Tuple, Type, Generator
+from typing import Generic, List, Dict, Optional, Self, TextIO, Tuple, Type, Generator, Any, cast
 
-from .utils import TK, TV
+import comfy.utils
+import comfy.sd
+
+from .utils import TK, TV, Cache, Lora, Model, Clip
 from .constants import ALL_CATEGORIES, CUST_STYLES_PATH, ROOT_DIR
-from .models import *
+from .models import StyleList, CategoryList, Prompt, TModel, UNCATEGORIZED_CATEGORY_NAME
 import yaml
+import folder_paths
+
+import utils
 
 @dataclass
 class CachedFile: 
@@ -163,13 +169,14 @@ class PromptController(YamlLoader):
         return (final_prompt.prompt if not final_prompt.prompt is None else "",
         final_prompt.negative_prompt  if not final_prompt.negative_prompt is None else "")
     
-    def apply_styles(self, styles: List[str]):
+    def apply_styles(self, styles: List[str], categorized: bool = True):
         for style in styles:
             style_prompt = self.style_list.styles.get(style, None)
             if style_prompt is None:
                 raise Exception(f"{style} is not a valid style, probably a custom style that has been removed,\n"+ \
                 "in which case, unselect the style and refresh the page")
-            
+            if not categorized:
+                style_prompt.category = UNCATEGORIZED_CATEGORY_NAME
             self.prompts[style_prompt.category] = self.merge_prompts(self.prompts[style_prompt.category], style_prompt)
 
     def _load_custom_style_list(self) -> StyleList:
@@ -206,25 +213,26 @@ class NodeRunner:
     def __init__(self) -> None:
         self.category_controller: CategoryController = CategoryController()
         self.prompt_controller: PromptController = PromptController(self.category_controller)
+        self.lora_cache: Cache[str, utils.Lora] = Cache()
 
-    def _get_category(self, category: str) -> str:
-        cat = self.category_controller.find_category(category)
-        if cat is None:
-            print(f"{category} was not found, defaulting to {UNCATEGORIZED_CATEGORY_NAME}")
-            cat = self.category_controller.find_category(UNCATEGORIZED_CATEGORY_NAME)
-            if cat is None:
-                raise Exception(f"{UNCATEGORIZED_CATEGORY_NAME} category does not exist????")
-        return cat
+#    def _get_category(self, category: str) -> str:
+#        cat = self.category_controller.find_category(category)
+#        if cat is None:
+#            print(f"{category} was not found, defaulting to {UNCATEGORIZED_CATEGORY_NAME}")
+#            cat = self.category_controller.find_category(UNCATEGORIZED_CATEGORY_NAME)
+#            if cat is None:
+#                raise Exception(f"{UNCATEGORIZED_CATEGORY_NAME} category does not exist????")
+#        return cat
 
-    def process_encoded_prompt_input(self, prompt: str) -> Self:
-        self.prompt_controller.load_encoded_prompt(prompt)
-        return self
+    def process_positive_prompt_input(self, prompt: str, is_encoded: bool, category: str = UNCATEGORIZED_CATEGORY_NAME ) -> Self:
+        if is_encoded:
+            self.prompt_controller.load_encoded_prompt(prompt)
+            return self
 
-    def process_positive_prompt_input(self, prompt: str, category: str) -> Self:
         self.prompt_controller.load_prompt(Prompt(
             prompt=prompt,
             negative_prompt="",
-            category=self._get_category(category)
+            category=category if category != "" else UNCATEGORIZED_CATEGORY_NAME
         ))
         return self;
 
@@ -236,9 +244,9 @@ class NodeRunner:
         ))
         return self
 
-    def apply_styles(self, styles: Optional[List[str]]) -> Self:
+    def apply_styles(self, styles: Optional[List[str]], categorized: bool = True) -> Self:
         if styles is not None:
-            self.prompt_controller.apply_styles(styles)
+            self.prompt_controller.apply_styles(styles, categorized)
         return self
 
     def save_style(self, name: str, category: str, positive_prompt: str, negative_prompt: str) -> Self:
@@ -266,3 +274,23 @@ class NodeRunner:
         if category == ALL_CATEGORIES:
             return [k for k in self.prompt_controller.style_list.styles.keys()]
         return [k for k, v in self.prompt_controller.style_list.styles.items() if v.category == category]
+
+    def get_lora_names(self) -> List[str]:
+        return folder_paths.get_filename_list("loras")
+    
+    def apply_loras(self, model: Model, clip: Clip, lora_names: List[str], model_strength: float, clip_strength: float) -> Tuple[Model, Clip]:
+        for lora_name in lora_names:
+            model, clip = self.apply_lora(model, clip, lora_name, model_strength, clip_strength)
+        return model, clip
+
+    def apply_lora(self, model: Model, clip: Clip, lora_name: str, model_strength: float, clip_strength: float) -> Tuple[Model, Clip]:
+        if model_strength == 0 and clip_strength == 0:
+            return (model, clip)
+        path = folder_paths.get_full_path_or_raise("loras", lora_name)
+        lora: Optional[Lora] = None
+        if self.lora_cache.contains(path):
+            lora = self.lora_cache.get(path) 
+        else:
+            lora = cast(Lora, comfy.utils.load_torch_file(path, safe_load=True))
+            self.lora_cache.set(path, lora)
+        return cast(Tuple[Model, Clip], comfy.sd.load_lora_for_models(model, clip, lora, model_strength, clip_strength))
