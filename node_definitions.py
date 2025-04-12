@@ -55,7 +55,7 @@ class StiffyPersistentPrompterNode:
             .process_negative_prompt_input(negative_prompt) \
             .process_positive_prompt_input(prompt_text, False) \
             .process_negative_prompt_input(negative_prompt_text) \
-            .save_style(style_name, category, prompt, negative_prompt) \
+            .save_style(style_name, category, prompt_text, negative_prompt_text) \
             .get_decoded_prompt()
 
 class StiffyCategorizedPrompterNode:
@@ -207,7 +207,7 @@ class StiffyLoraLoaderNode:
             "required": {
                 "model": ("MODEL", {"tooltip": "The diffusion model the LoRAs will be applied to."}),
                 "clip": ("CLIP", {"tooltip": "The CLIP model the LoRAs will be applied to."}),
-                "lora_name": ("COMBO", {
+                "lora_names": ("COMBO", {
                     "options": runner.get_lora_names(),
                     "multi_select": True,
                     "tooltip": "The name of the LoRA.", 
@@ -224,4 +224,4 @@ class StiffyLoraLoaderNode:
     DESCRIPTION = "LoRAs are used to modify diffusion and CLIP models, altering the way in which latents are denoised such as applying styles. Multiple LoRA nodes can be linked together."
 
     def get_stiffy(self, model: Model, clip: Clip, lora_names: List[str], strength_model: float, strength_clip: float):
-        NodeRunner().apply_loras(model, clip, lora_names, strength_model, strength_clip)
+        return NodeRunner().apply_loras(model, clip, lora_names, strength_model, strength_clip)
